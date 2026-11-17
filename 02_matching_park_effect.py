@@ -26,7 +26,10 @@ from sklearn.neighbors import NearestNeighbors
 
 import config as cfg
 
-OUTCOME = "s2"         # "modis" or "s2"
+import os
+OUTCOME = os.environ.get("OUTCOME", "s2")        # "modis" or "s2"
+FOREST_ONLY = os.environ.get("FOREST_ONLY", "0") == "1"   # forest and mangrove points only
+SUFFIX = OUTCOME + ("_forest" if FOREST_ONLY else "")
 COVS = ["elevation", "slope", "travel_time_min", "precip_mm_yr"]
 CALIPER = 0.5          # max matching distance, in pooled-SD units (Euclidean)
 BLOCK_KM = 10          # spatial block size for the bootstrap
@@ -48,6 +51,8 @@ def load():
         cols = [f"f{y}" for y in range(2017, cfg.YEAR_END + 1)]
     df = df[df.worldcover != 80].dropna(subset=COVS + ["worldcover"])
     df["lc"] = df.worldcover.astype(int).map(LC_GROUP).fillna("other")
+    if FOREST_ONLY:
+        df = df[df.worldcover.isin([10, 95])]
     df["burn_rate"] = df[cols].mean(axis=1) * 100  # % of valid years burned
     df = df.dropna(subset=["burn_rate"])
     # spatial blocks (approx. km grid in degrees)
@@ -123,8 +128,8 @@ def main():
 
     res = pd.DataFrame(res).sort_values("att")
     bal = pd.DataFrame(bal)
-    res.round(3).to_csv(cfg.RESULTS_DIR / f"park_effect_att_{OUTCOME}.csv", index=False)
-    bal.round(3).to_csv(cfg.RESULTS_DIR / f"covariate_balance_{OUTCOME}.csv", index=False)
+    res.round(3).to_csv(cfg.RESULTS_DIR / f"park_effect_att_{SUFFIX}.csv", index=False)
+    bal.round(3).to_csv(cfg.RESULTS_DIR / f"covariate_balance_{SUFFIX}.csv", index=False)
 
     print("\nMax |SMD| after matching (target < 0.1):")
     print(bal.groupby("park").smd_after.apply(lambda s: s.abs().max()).round(3))
@@ -141,7 +146,7 @@ def main():
     ax.set_xlabel("Difference in annual burn probability (percentage points)")
     ax.legend(frameon=False, loc="lower right")
     fig.tight_layout()
-    fig.savefig(cfg.FIG_DIR / f"fig_park_effect_{OUTCOME}.png", dpi=300)
+    fig.savefig(cfg.FIG_DIR / f"fig_park_effect_{SUFFIX}.png", dpi=300)
     plt.show()
 
 
